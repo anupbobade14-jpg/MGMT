@@ -1,0 +1,119 @@
+spring:
+  application:
+    name: society-management
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/society_db}
+    username: ${DB_USERNAME:society_user}
+    password: ${DB_PASSWORD:society_pass}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 15MB
+
+  mail:
+    host: ${SMTP_HOST:mail.example.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:noreply@example.com}
+    password: ${SMTP_PASSWORD:changeme}
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 10000
+          timeout: 10000
+          writetimeout: 10000
+        debug: false
+
+  security:
+    oauth2:
+      client:
+        registration: {}    # Google registration is defined in application-google.yml (activate via SPRING_PROFILES_ACTIVE=google)
+
+  thymeleaf:
+    cache: false
+    prefix: classpath:/templates/
+    suffix: .html
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+  error:
+    include-message: always
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:ZmFrZS1zZWNyZXQta2V5LWNoYW5nZS1tZS1pbi1wcm9kdWN0aW9uLXNvY2lldHktbWFuYWdlbWVudA==}
+    expiration-ms: 86400000        # 24 hours access token
+    refresh-expiration-ms: 604800000 # 7 days refresh token
+    issuer: society-management
+
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+  upload:
+    base-dir: ${UPLOAD_DIR:./uploads}
+    payment-proofs: payment-proofs
+    documents: documents
+    receipts: receipts
+    allowed-image-types: image/jpeg,image/png,image/jpg
+    max-file-size-mb: 10
+
+  mail:
+    from: ${MAIL_FROM:noreply@society.local}
+    from-name: ${MAIL_FROM_NAME:Society Management}
+    enabled: ${MAIL_ENABLED:true}
+
+  maintenance:
+    default-due-day: 10          # every month due on 10th
+    default-late-fee: 100.00
+    reminder-cron: "0 0 9 * * *" # 09:00 daily
+    generation-cron: "0 0 1 1 * *" # 01:00 on 1st of every month
+
+  frontend:
+    base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+
+springdoc:
+  api-docs:
+    path: /api/v3/api-docs
+  swagger-ui:
+    path: /api/swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+
+logging:
+  level:
+    root: INFO
+    com.society.management: DEBUG
+    org.springframework.security: INFO

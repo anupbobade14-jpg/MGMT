@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>My Maintenance — Society Management</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="assets/css/app.css" rel="stylesheet"/>
+</head>
+<body>
+  <div class="sm-app">
+    <aside id="sm-sidebar" class="sm-sidebar"></aside>
+    <main class="sm-main">
+      <div id="sm-topbar" class="sm-topbar"></div>
+
+      <div class="card p-3">
+        <div class="d-flex justify-content-between mb-3">
+          <h5 class="card-title"><i class="bi bi-receipt-cutoff text-primary"></i> Maintenance Bills</h5>
+          <select id="statusFilter" class="form-select form-select-sm w-auto">
+            <option value="">All statuses</option>
+            <option value="PENDING">Pending</option>
+            <option value="UNDER_VERIFICATION">Under Verification</option>
+            <option value="APPROVED">Approved</option>
+            <option value="OVERDUE">Overdue</option>
+          </select>
+        </div>
+        <div class="table-responsive">
+          <table class="table align-middle">
+            <thead>
+              <tr>
+                <th>Flat</th><th>Period</th><th>Amount</th><th>Due Date</th><th>Status</th><th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody id="billTbody"><tr><td colspan="6" class="text-muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Pay modal -->
+  <div class="modal fade" id="payModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="payForm">
+          <div class="modal-header">
+            <h5 class="modal-title"><i class="bi bi-wallet2 text-primary"></i> Submit Payment</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="payInfo" class="alert alert-primary bg-primary-soft border-0"></div>
+            <input type="hidden" name="maintenanceId"/>
+            <div class="mb-3">
+              <label class="form-label small">Amount</label>
+              <input type="number" name="amount" step="0.01" class="form-control" required/>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">Payment mode</label>
+              <select name="paymentMode" class="form-select" required>
+                <option value="UPI">UPI</option>
+                <option value="BANK_TRANSFER">Bank Transfer</option>
+                <option value="ONLINE">Online (Net Banking)</option>
+                <option value="CASH">Cash</option>
+                <option value="CHEQUE">Cheque</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">Transaction reference</label>
+              <input name="transactionRef" class="form-control" placeholder="UPI ref / cheque no / bank txn ID"/>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">Payment date</label>
+              <input type="date" name="paymentDate" class="form-control"/>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small">Proof (JPEG/PNG)</label>
+              <input type="file" name="proof" class="form-control" accept="image/jpeg,image/png,image/jpg" required/>
+              <div class="form-text">Screenshot or receipt image, max 10 MB.</div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i> Submit for approval</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    Auth.requireLogin();
+    renderLayout('payments', 'My Maintenance & Payments');
+
+    let allBills = [];
+    async function loadBills() {
+      showSpinner(true);
+      try {
+        const page = await API.maintenanceList();
+        allBills = page.content || page;
+        renderBills();
+      } catch (e) {
+        showToast('Failed to load bills: ' + e.message, 'danger');
+      } finally { showSpinner(false); }
+    }
+
+    function renderBills() {
+      const filter = document.getElementById('statusFilter').value;
+      const rows = allBills.filter(b => !filter || b.status === filter);
+      const tbody = document.getElementById('billTbody');
+      if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center py-3">No bills to show.</td></tr>'; return; }
+      tbody.innerHTML = rows.map(b => `
+        <tr>
+          <td><strong>${b.flat?.flatNumber || '-'}</strong></td>
+          <td>${fmt.monthYear(b.billMonth, b.billYear)}</td>
+          <td>${fmt.money(b.totalAmount)}${Number(b.lateFee)>0?` <span class="small text-warning">(+${fmt.money(b.lateFee)} late)</span>`:''}</td>
+          <td>${fmt.date(b.dueDate)}</td>
+          <td><span class="badge-status ${b.status.toLowerCase()}">${b.status.replace('_',' ')}</span></td>
+          <td class="text-end">
+            ${['PENDING','OVERDUE','REJECTED'].includes(b.status)
+              ? `<button class="btn btn-sm btn-primary" onclick="openPay(${b.id}, ${b.totalAmount}, ${b.billMonth}, ${b.billYear})"><i class="bi bi-wallet2 me-1"></i> Pay Now</button>`
+              : '<span class="text-muted small">—</span>'}
+          </td>
+        </tr>`).join('');
+    }
+
+    function openPay(id, amount, m, y) {
+      const modal = new bootstrap.Modal(document.getElementById('payModal'));
+      const f = document.getElementById('payForm');
+      f.maintenanceId.value = id;
+      f.amount.value = amount;
+      f.paymentDate.value = new Date().toISOString().slice(0,10);
+      document.getElementById('payInfo').innerHTML = `Paying <strong>${fmt.money(amount)}</strong> for <strong>${fmt.monthYear(m, y)}</strong>`;
+      modal.show();
+    }
+
+    document.getElementById('statusFilter').addEventListener('change', renderBills);
+    document.getElementById('payForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.currentTarget;
+      const proof = f.proof.files[0];
+      const data = {
+        maintenanceId: Number(f.maintenanceId.value),
+        amount: Number(f.amount.value),
+        paymentMode: f.paymentMode.value,
+        transactionRef: f.transactionRef.value || null,
+        paymentDate: f.paymentDate.value
+      };
+      showSpinner(true);
+      try {
+        await API.submitPayment(data, proof);
+        showToast('Payment submitted for approval', 'success');
+        bootstrap.Modal.getInstance(document.getElementById('payModal')).hide();
+        loadBills();
+      } catch (err) {
+        showToast('Submit failed: ' + err.message, 'danger');
+      } finally { showSpinner(false); }
+    });
+
+    loadBills();
+  </script>
+</body>
+</html>

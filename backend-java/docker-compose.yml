@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: society_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: society_db
+      POSTGRES_USER: society_user
+      POSTGRES_PASSWORD: society_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - society_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U society_user -d society_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: society_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/society_db
+      DB_USERNAME: society_user
+      DB_PASSWORD: society_pass
+      SERVER_PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-ZmFrZS1zZWNyZXQta2V5LWNoYW5nZS1tZS1pbi1wcm9kdWN0aW9uLXNvY2lldHktbWFuYWdlbWVudA==}
+      SMTP_HOST: ${SMTP_HOST:-mail.example.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-noreply@example.com}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-changeme}
+      MAIL_FROM: ${MAIL_FROM:-noreply@society.local}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Society Management}
+      MAIL_ENABLED: ${MAIL_ENABLED:-false}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - society_uploads:/app/uploads
+
+volumes:
+  society_pgdata:
+  society_uploads:

@@ -1,0 +1,13 @@
+<!doctype html>
+<html>
+<head>
+<meta http-equiv="refresh" content="0; url=login.html"/>
+<title>Society Management</title>
+</head>
+<body>
+<script>
+  if (localStorage.getItem('sm_access_token')) location.href = 'dashboard.html';
+  else location.href = 'login.html';
+</script>
+</body>
+</html>

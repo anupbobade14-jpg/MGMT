@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Dashboard — Society Management</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link href="assets/css/app.css" rel="stylesheet"/>
+</head>
+<body>
+  <div class="sm-app">
+    <aside id="sm-sidebar" class="sm-sidebar"></aside>
+    <main class="sm-main">
+      <div id="sm-topbar" class="sm-topbar"></div>
+
+      <div class="row g-3" id="statCards">
+        <!-- populated by JS -->
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-lg-8">
+          <div class="card p-3">
+            <div class="d-flex justify-content-between mb-2">
+              <h5 class="card-title"><i class="bi bi-graph-up-arrow text-primary"></i> Monthly Collection vs Expenses</h5>
+              <span class="small text-muted" id="chartYear"></span>
+            </div>
+            <canvas id="chartMain" height="120"></canvas>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card p-3 h-100">
+            <h5 class="card-title mb-3"><i class="bi bi-megaphone-fill text-primary"></i> Recent Notices</h5>
+            <div id="noticeList"><div class="text-muted small">Loading...</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-lg-8">
+          <div class="card p-3">
+            <h5 class="card-title mb-3"><i class="bi bi-clock-history text-primary"></i> Upcoming Events</h5>
+            <div id="eventList"><div class="text-muted small">Loading...</div></div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card p-3">
+            <h5 class="card-title mb-3"><i class="bi bi-pie-chart-fill text-primary"></i> Occupancy</h5>
+            <canvas id="chartOccupancy" height="200"></canvas>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    Auth.requireLogin();
+    renderLayout('dashboard', 'Dashboard');
+
+    (async () => {
+      showSpinner(true);
+      try {
+        const d = await API.dashboard();
+        const cards = [
+          { cls:'indigo', icon:'building',       label:'Total Flats',      value: fmt.int(d.totalFlats) },
+          { cls:'green',  icon:'house-check',    label:'Occupied',         value: fmt.int(d.occupiedFlats), sub: fmt.int(d.vacantFlats) + ' vacant' },
+          { cls:'sky',    icon:'people-fill',    label:'Total Owners',     value: fmt.int(d.totalOwners) },
+          { cls:'amber',  icon:'exclamation-circle', label:'Pending Bills', value: fmt.int(d.pendingMaintenance) },
+          { cls:'green',  icon:'check2-all',     label:'Paid Bills',       value: fmt.int(d.paidMaintenance) },
+          { cls:'indigo', icon:'cash-stack',     label:"Today's Collection", value: fmt.money(d.todaysCollection) },
+          { cls:'sky',    icon:'wallet-fill',    label:'This Month',       value: fmt.money(d.monthlyCollection) },
+          { cls:'rose',   icon:'graph-down-arrow', label:'Total Expenses (YTD)', value: fmt.money(d.totalExpenses) },
+          { cls:'green',  icon:'piggy-bank-fill', label:'Available Balance', value: fmt.money(d.availableBalance) },
+        ];
+        document.getElementById('statCards').innerHTML = cards.map(c => `
+          <div class="col-lg-3 col-md-6 col-sm-6">
+            <div class="stat-card ${c.cls} hover-shadow">
+              <div class="icon"><i class="bi bi-${c.icon}"></i></div>
+              <div class="label">${c.label}</div>
+              <div class="value">${c.value}</div>
+              ${c.sub ? `<div class="sub">${c.sub}</div>` : ''}
+            </div>
+          </div>
+        `).join('');
+
+        // Main chart
+        const labels = Object.keys(d.monthlyCollectionChart).map(m => m.substring(0,3));
+        const coll = Object.values(d.monthlyCollectionChart).map(Number);
+        const exp  = Object.values(d.monthlyExpenseChart).map(Number);
+        new Chart(document.getElementById('chartMain'), {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              { label:'Collection', data: coll, backgroundColor:'#1e3a8a', borderRadius:6 },
+              { label:'Expenses',   data: exp,  backgroundColor:'#f59e0b', borderRadius:6 },
+            ]
+          },
+          options: { plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
+        });
+        document.getElementById('chartYear').textContent = new Date().getFullYear();
+
+        // Occupancy donut
+        new Chart(document.getElementById('chartOccupancy'), {
+          type: 'doughnut',
+          data: {
+            labels: ['Occupied', 'Vacant'],
+            datasets: [{ data: [d.occupiedFlats, d.vacantFlats], backgroundColor:['#10b981','#e5e7eb'], borderWidth:0 }]
+          },
+          options: { plugins:{legend:{position:'bottom'}}, cutout:'70%' }
+        });
+
+        // Notices
+        const nEl = document.getElementById('noticeList');
+        if (!d.recentNotices.length) nEl.innerHTML = '<div class="text-muted small">No notices yet.</div>';
+        else nEl.innerHTML = d.recentNotices.map(n => `
+          <div class="border-bottom py-2">
+            <div style="font-weight:600; font-size:.92rem;">${escapeHtml(n.title)}</div>
+            <div class="text-muted" style="font-size:.75rem;">${fmt.dateTime(n.publishedAt)}</div>
+          </div>
+        `).join('');
+
+        // Events
+        const eEl = document.getElementById('eventList');
+        if (!d.upcomingEvents.length) eEl.innerHTML = '<div class="text-muted small">No upcoming events.</div>';
+        else eEl.innerHTML = d.upcomingEvents.map(ev => `
+          <div class="d-flex justify-content-between border-bottom py-2">
+            <div>
+              <div style="font-weight:600; font-size:.92rem;">${escapeHtml(ev.title)}</div>
+              <div class="text-muted" style="font-size:.78rem;">${ev.location || '—'}</div>
+            </div>
+            <div class="text-end small text-muted">${fmt.dateTime(ev.eventDate)}</div>
+          </div>
+        `).join('');
+
+      } catch (err) {
+        showToast('Failed to load dashboard: ' + err.message, 'danger');
+      } finally {
+        showSpinner(false);
+      }
+    })();
+
+    function escapeHtml(s) { return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  </script>
+</body>
+</html>
